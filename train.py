@@ -6,7 +6,8 @@ http://homepages.inf.ed.ac.uk/jyamagis/page3/page58/page58.html
 """
 
 from __future__ import print_function
-
+import matplotlib.pyplot as plt
+import numpy as np
 import argparse
 from datetime import datetime
 import json
@@ -343,7 +344,18 @@ def main():
                 """
                 summary, loss_value, _, prediction_v, target_output_v = sess.run([summaries, loss, optim, prediction, target_output])
                 writer.add_summary(summary, step)
-                print(prediction_v[-1], target_output_v[-1])
+                shape = prediction_v.shape
+                x = np.linspace(0, shape[0], shape[0])
+                y1, y2 = prediction_v[:, 2], target_output_v[:, 2]
+                plt.clf()
+                plt.plot(x, y1)
+                plt.plot(x, y2)
+                plt.ylim(-80, 80)
+                plt.xlim(-0, 500)
+                plt.title('Fitting chart')
+                plt.xlabel('time')
+                plt.ylabel('angel')
+                plt.savefig("/home/chen/Documents/tensorflow-wavenet-master/images/train_result/" + str(loss_value) + ".png")
                 # chen_test end
 
             duration = time.time() - start_time
