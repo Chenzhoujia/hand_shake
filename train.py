@@ -24,7 +24,7 @@ from wavenet.util.visual import figure_joint_skeleton
 BATCH_SIZE = 1
 DATA_DIRECTORY = './VCTK-Corpus'
 LOGDIR_ROOT = './logdir'
-CHECKPOINT_EVERY = 50
+CHECKPOINT_EVERY = 500
 NUM_STEPS = int(1e5)
 LEARNING_RATE = 1e-3
 WAVENET_PARAMS = './wavenet_params.json'
@@ -306,7 +306,7 @@ def main():
     try:
         for step in range(saved_global_step + 1, args.num_steps):
             start_time = time.time()
-            if args.store_metadata and step % 500 == 0:
+            if args.store_metadata and step % 5000 == 0:
 
                 # Slow run that stores extra information for debugging.
                 print('Storing metadata')
@@ -344,6 +344,7 @@ def main():
                 """
                 summary, loss_value, _, prediction_v, target_output_v = sess.run([summaries, loss, optim, prediction, target_output])
                 writer.add_summary(summary, step)
+                """
                 shape = prediction_v.shape
                 x = np.linspace(0, shape[0], shape[0])
                 y1, y2 = prediction_v[:, 2], target_output_v[:, 2]
@@ -356,6 +357,7 @@ def main():
                 plt.xlabel('time')
                 plt.ylabel('angel')
                 plt.savefig("/home/chen/Documents/tensorflow-wavenet-master/images/train_result/" + str(loss_value) + ".png")
+                """
                 # chen_test end
 
             duration = time.time() - start_time

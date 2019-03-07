@@ -3,14 +3,57 @@ import os
 import random
 import re
 import threading
-
+from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import librosa
 import numpy as np
 import tensorflow as tf
 
 FILE_PATTERN = r'p([0-9]+)_([0-9]+)\.wav'
 
+def figure_hand_back(uvd_pt,uvd_pt2,path,test_num):
+    #uvd_pt = np.reshape(uvd_pt, (20, 3))
+    uvd_pt = uvd_pt.reshape(-1, 3)
+    uvd_pt2 = uvd_pt2.reshape(-1, 3)
+    fig = plt.figure(1)
+    fig.clear()
+    ax = plt.subplot(111, projection='3d')
 
+    fig_color = ['c', 'm', 'y', 'g', 'r']
+
+    ax.scatter(uvd_pt[0, 0], uvd_pt[0, 1], uvd_pt[0, 2], s=10, c='b')
+    ax.scatter(uvd_pt[1, 0], uvd_pt[1, 1], uvd_pt[1, 2], s=10, c='b')
+    ax.scatter(uvd_pt[2, 0], uvd_pt[2, 1], uvd_pt[2, 2], s=10, c='b')
+
+    ax.plot([uvd_pt[0, 0], uvd_pt[1, 0]],
+            [uvd_pt[0, 1], uvd_pt[1, 1]],
+            [uvd_pt[0, 2], uvd_pt[1, 2]], color='b', linewidth=1)
+    ax.plot([uvd_pt[1, 0], uvd_pt[2, 0]],
+            [uvd_pt[1, 1], uvd_pt[2, 1]],
+            [uvd_pt[1, 2], uvd_pt[2, 2]], color='b', linewidth=1)
+    ax.plot([uvd_pt[2, 0], uvd_pt[0, 0]],
+            [uvd_pt[2, 1], uvd_pt[0, 1]],
+            [uvd_pt[2, 2], uvd_pt[0, 2]], color='b', linewidth=1)
+
+    plt.ylim(-300, 100)
+    plt.xlim(-300, 100)
+    ax.set_zlim(-300, 100)
+
+    ax.scatter(uvd_pt2[0, 0], uvd_pt2[0, 1], uvd_pt2[0, 2], s=10, c='r')
+    ax.scatter(uvd_pt2[1, 0], uvd_pt2[1, 1], uvd_pt2[1, 2], s=10, c='r')
+    ax.scatter(uvd_pt2[2, 0], uvd_pt2[2, 1], uvd_pt2[2, 2], s=10, c='r')
+
+    ax.plot([uvd_pt2[0, 0], uvd_pt2[1, 0]],
+            [uvd_pt2[0, 1], uvd_pt2[1, 1]],
+            [uvd_pt2[0, 2], uvd_pt2[1, 2]], color='r', linewidth=1)
+    ax.plot([uvd_pt2[1, 0], uvd_pt2[2, 0]],
+            [uvd_pt2[1, 1], uvd_pt2[2, 1]],
+            [uvd_pt2[1, 2], uvd_pt2[2, 2]], color='r', linewidth=1)
+    ax.plot([uvd_pt2[2, 0], uvd_pt2[0, 0]],
+            [uvd_pt2[2, 1], uvd_pt2[0, 1]],
+            [uvd_pt2[2, 2], uvd_pt2[0, 2]], color='r', linewidth=1)
+
+    plt.savefig(path+str(test_num).zfill(7)+".png")
 def get_category_cardinality(files):
     id_reg_expression = re.compile(FILE_PATTERN)
     min_id = None
@@ -30,8 +73,6 @@ def randomize_files(files):
     for file in files:
         file_index = random.randint(0, (len(files) - 1))
         yield files[file_index]
-
-
 def find_files(directory, pattern='*.wav'):
     '''Recursively finds all files matching the pattern.'''
     files = []
@@ -59,7 +100,6 @@ def load_generic_audio(directory, sample_rate):
         audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
         audio = audio.reshape(-1, 1)
         yield audio, filename, category_id
-
 def load_generated_pose(directory, sample_rate):
     '''Generator that yields audio waveforms from the directory.'''
     files = []
@@ -91,7 +131,22 @@ def load_generated_pose(directory, sample_rate):
         #for test_read_i in range(shape[0]):
         #    figure_joint_skeleton(onefile_data_pose_r[test_read_i, :, :], path + "/" + seqid + "/", test_read_i)
         yield onefile_data_pose_r, filename, category_id
-
+def load_generated_tra(directory, sample_rate):
+    '''Generator that yields audio waveforms from the directory.'''
+    files = []
+    for root, dirnames, filenames in os.walk(directory):
+        for filename in fnmatch.filter(filenames, '*.txt'):
+            files.append(os.path.join(root, filename))
+    print("files_gt length: {}".format(len(files)))
+    randomized_files = randomize_files(files)
+    for filename in randomized_files:
+        onefile_randomized_files = np.loadtxt(filename)
+        #shape = onefile_randomized_files.shape
+        #path_view_txt = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra/view/"
+        #for test_read_i in range(shape[0]):
+        #    figure_hand_back(onefile_randomized_files[test_read_i, 0:9], onefile_randomized_files[test_read_i, 9:],
+        #                     path_view_txt, test_read_i)
+        yield onefile_randomized_files, filename, None
 def trim_silence(audio, threshold, frame_length=2048):
     '''Removes silence at the beginning and end of a sample.'''
     if audio.size < frame_length:
@@ -139,7 +194,7 @@ class AudioReader(object):
         self.sample_placeholder = tf.placeholder(dtype=tf.float32, shape=None)
         self.queue = tf.PaddingFIFOQueue(queue_size,
                                          ['float32'],
-                                         shapes=[(None, 66)])
+                                         shapes=[(None, 9*2)])
         self.enqueue = self.queue.enqueue([self.sample_placeholder])
 
         if self.gc_enabled:
@@ -186,8 +241,9 @@ class AudioReader(object):
         # Go through the dataset multiple times
         while not stop:
             # chen_test data
-            iterator = load_generated_pose("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/shake", self.sample_rate)
+            #iterator = load_generated_pose("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/shake", self.sample_rate)
             #iterator = load_generic_audio(self.audio_dir, self.sample_rate)
+            iterator = load_generated_tra("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra", self.sample_rate)
             for audio, filename, category_id in iterator:
                 if self.coord.should_stop():
                     stop = True

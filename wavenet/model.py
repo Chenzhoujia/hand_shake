@@ -221,14 +221,14 @@ class WaveNetModel(object):
                     [1, self.skip_channels, 128])
                 current['postprocess2'] = create_variable(
                     'postprocess2',
-                    [1, 128, 6])
+                    [1, 128, 9])
                 if self.use_biases:
                     current['postprocess1_bias'] = create_bias_variable(
                         'postprocess1_bias',
                         [128])
                     current['postprocess2_bias'] = create_bias_variable(
                         'postprocess2_bias',
-                        [6])
+                        [9])
                 var['postprocessing'] = current
 
         return var
@@ -638,8 +638,8 @@ class WaveNetModel(object):
             else:
                 #network_input = encoded
                 network_input = input_batch
-            network_input = input_batch[:, :, 0:-6]
-            network_label = input_batch[:, :, -6:]
+            network_input = input_batch[:, :, 0:9]
+            network_label = input_batch[:, :, 9:]
 
             # Cut off the last sample of network input to preserve causality.
             network_input_width = tf.shape(network_input)[1] - 1
@@ -665,8 +665,8 @@ class WaveNetModel(object):
                 target_output = tf.reshape(target_output,
                                            [-1, self.quantization_channels])
                 """
-                prediction = tf.reshape(raw_output, [-1, 6])
-                target_output = tf.reshape(network_label, [-1, 6])
+                prediction = tf.reshape(raw_output, [-1, 9])
+                target_output = tf.reshape(network_label, [-1, 9])
                 #loss = tf.nn.softmax_cross_entropy_with_logits(
                 #    logits=prediction,
                 #    labels=target_output)
