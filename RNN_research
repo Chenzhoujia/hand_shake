@@ -1,0 +1,9 @@
+为了能将RNN用在我们的任务上,我们将分为以下几个步骤执行
+(1)比较wavenet和RNN的流程,设计RNN的交互
+        RNN:
+数据:   1352份[50,50,128]的ndarray,然后直接在训练的循环中feed进去
+        Wavenet:
+数据:   用reader弄的一个audio_batch = reader.dequeue(args.batch_size)[1,5000,18]
+(2)将RNN的输入改成这种队列的风格
+    检查异常短的序列,排除,因为要固定长度--改变了audio_reader
+    batch = 1

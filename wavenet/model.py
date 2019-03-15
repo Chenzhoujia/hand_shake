@@ -221,14 +221,14 @@ class WaveNetModel(object):
                     [1, self.skip_channels, 128])
                 current['postprocess2'] = create_variable(
                     'postprocess2',
-                    [1, 128, 9])
+                    [1, 128, 3])
                 if self.use_biases:
                     current['postprocess1_bias'] = create_bias_variable(
                         'postprocess1_bias',
                         [128])
                     current['postprocess2_bias'] = create_bias_variable(
                         'postprocess2_bias',
-                        [9])
+                        [3])
                 var['postprocessing'] = current
 
         return var
@@ -639,7 +639,7 @@ class WaveNetModel(object):
                 #network_input = encoded
                 network_input = input_batch
             network_input = input_batch[:, :, 0:9]
-            network_label = input_batch[:, :, 9:]
+            network_label = input_batch[:, :, 9:12]
 
             # Cut off the last sample of network input to preserve causality.
             network_input_width = tf.shape(network_input)[1] - 1
@@ -648,7 +648,7 @@ class WaveNetModel(object):
 
             network_label = tf.slice(network_label, [0, 0, 0],
                                      [-1, network_input_width, -1])
-            network_label = network_label[:, 51:, :]
+            network_label = network_label[:, (self.receptive_field-1):, :]
 
             raw_output = self._create_network(network_input, gc_embedding)
 
@@ -665,8 +665,8 @@ class WaveNetModel(object):
                 target_output = tf.reshape(target_output,
                                            [-1, self.quantization_channels])
                 """
-                prediction = tf.reshape(raw_output, [-1, 9])
-                target_output = tf.reshape(network_label, [-1, 9])
+                prediction = tf.reshape(raw_output, [-1, 3])
+                target_output = tf.reshape(network_label, [-1, 3])
                 #loss = tf.nn.softmax_cross_entropy_with_logits(
                 #    logits=prediction,
                 #    labels=target_output)
@@ -680,7 +680,7 @@ class WaveNetModel(object):
                     #return network_input, network_label,raw_output
                     #chen_test end
 
-                    return reduced_loss,prediction,target_output
+                    return reduced_loss,network_input,prediction,target_output
                 else:
                     # L2 regularization for all trainable parameters
                     l2_loss = tf.add_n([tf.nn.l2_loss(v)

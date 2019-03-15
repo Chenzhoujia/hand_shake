@@ -31,7 +31,7 @@ LOGDIR_ROOT = './logdir'
 CHECKPOINT_EVERY = 500
 NUM_STEPS = int(1e5)
 LEARNING_RATE = 1e-3
-WAVENET_PARAMS = './wavenet_params.json'
+WAVENET_PARAMS = './rnnnet_params.json'
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
 SAMPLE_SIZE = None
 L2_REGULARIZATION_STRENGTH = 0
@@ -247,7 +247,10 @@ def validate_directories(args):
         'restore_from': restore_from
     }
 
-istest = False
+from rnnnet.model import Model
+
+istest = True
+
 def main():
     args = get_arguments()
 
@@ -281,12 +284,9 @@ def main():
         reader = AudioReader(
             args.data_dir,
             coord,
-            sample_rate=wavenet_params['sample_rate'],
+            sample_rate=0,
             gc_enabled=gc_enabled,
-            receptive_field=WaveNetModel.calculate_receptive_field(wavenet_params["filter_width"],
-                                                                   wavenet_params["dilations"],
-                                                                   wavenet_params["scalar_input"],
-                                                                   wavenet_params["initial_filter_width"]),
+            receptive_field=0,
             sample_size=args.sample_size,
             silence_threshold=silence_threshold)
         audio_batch = reader.dequeue(args.batch_size)
@@ -296,39 +296,14 @@ def main():
             gc_id_batch = None
 
     # Create network.
-    net = WaveNetModel(
-        batch_size=args.batch_size,
-        dilations=wavenet_params["dilations"],
-        filter_width=wavenet_params["filter_width"],
-        residual_channels=wavenet_params["residual_channels"],
-        dilation_channels=wavenet_params["dilation_channels"],
-        skip_channels=wavenet_params["skip_channels"],
-        quantization_channels=wavenet_params["quantization_channels"],
-        use_biases=wavenet_params["use_biases"],
-        scalar_input=wavenet_params["scalar_input"],
-        initial_filter_width=wavenet_params["initial_filter_width"],
-        histograms=args.histograms,
-        global_condition_channels=args.gc_channels,
-        global_condition_cardinality=reader.gc_category_cardinality)
-
-    if args.l2_regularization_strength == 0:
-        args.l2_regularization_strength = None
-    #chen_test
-        """
-        network_input, network_label, raw_output = net.loss(input_batch=audio_batch,
-                                                        global_condition_batch=gc_id_batch,
-                                                        l2_regularization_strength=args.l2_regularization_strength)
-
-        """
-    loss, network_input, prediction, target_output = net.loss(input_batch=audio_batch,
-                    global_condition_batch=gc_id_batch,
-                    l2_regularization_strength=args.l2_regularization_strength)
-
+    model = Model(wavenet_params,input_batch=audio_batch)
+    loss = model.loss
     # chen_test end
     optimizer = optimizer_factory[args.optimizer](
                     learning_rate=args.learning_rate,
                     momentum=args.momentum)
     trainable = tf.trainable_variables()
+
     optim = optimizer.minimize(loss, var_list=trainable)
 
     # Set up logging for TensorBoard.
@@ -340,7 +315,7 @@ def main():
     # Set up session
     config = tf.ConfigProto(log_device_placement=False)
     config.gpu_options.allow_growth = True
-    sess = tf.Session(config=config)
+    sess = tf.Session(config = config)
     init = tf.global_variables_initializer()
     sess.run(init)
 
@@ -368,19 +343,23 @@ def main():
     try:
         pass_loss = 0.0
         for step in range(saved_global_step + 1, args.num_steps):
+
             if istest:
                 start_time = time.time()
-                loss_value, network_input_v, prediction_v, target_output_v = sess.run(
-                    [loss, network_input, prediction, target_output])
 
-                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/wave/"
+                loss_value, output_value, label_value = sess.run([model.loss, model.logits, model.original_labels])
+                label_value  = label_value[0,:,:]
+
+                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN/"
                            + "loss/" + str(step).zfill(5) + ".txt", np.array([loss_value]))
-                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/wave/"
-                           + "input/" + str(step).zfill(5) + ".txt", network_input_v[0,:,:])
-                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/wave/"
-                           + "result/" + str(step).zfill(5) + ".txt", prediction_v)
-                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/wave/"
-                           + "target/" + str(step).zfill(5) + ".txt", target_output_v)
+                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN/"
+                           + "result/" + str(step).zfill(5) + ".txt", output_value)
+                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN/"
+                           + "target/" + str(step).zfill(5) + ".txt", label_value)
+
+                duration = time.time() - start_time
+                print('step {:d} - loss = {:.3f}, ({:.3f} sec/step)'
+                      .format(step, loss_value, duration))
             else:
                 start_time = time.time()
                 if args.store_metadata and step % 5000 == 0:
@@ -419,81 +398,8 @@ def main():
                         figure_joint_skeleton(onefile_data_pose_r[test_read_i, :, :],
                         "/home/chen/Documents/tensorflow-wavenet-master/wavenet/test/image" + "/" + str(step) + "/", test_read_i)
                     """
-                    summary, loss_value, _,network_input_v, prediction_v, target_output_v = sess.run([summaries, loss, optim,network_input, prediction, target_output])
-                    writer.add_summary(summary, step)
-
-                    if True:
-
-                        network_input_v = network_input_v[0, (127 - 1):, :]
-                        network_input_v_prediction_v = np.array(network_input_v)
-                        network_input_v_target_output_v = np.array(network_input_v)
-
-                        network_input_v_prediction_v[:, 0] -= prediction_v[:, 0]
-                        network_input_v_prediction_v[:, 3] -= prediction_v[:, 0]
-                        network_input_v_prediction_v[:, 6] -= prediction_v[:, 0]
-
-                        network_input_v_prediction_v[:, 1] -= prediction_v[:, 1]
-                        network_input_v_prediction_v[:, 4] -= prediction_v[:, 1]
-                        network_input_v_prediction_v[:, 7] -= prediction_v[:, 1]
-
-                        network_input_v_prediction_v[:, 2] -= prediction_v[:, 2]
-                        network_input_v_prediction_v[:, 5] -= prediction_v[:, 2]
-                        network_input_v_prediction_v[:, 8] -= prediction_v[:, 2]
-
-                        network_input_v_target_output_v[:, 0] -= target_output_v[:, 0]
-                        network_input_v_target_output_v[:, 3] -= target_output_v[:, 0]
-                        network_input_v_target_output_v[:, 6] -= target_output_v[:, 0]
-
-                        network_input_v_target_output_v[:, 1] -= target_output_v[:, 1]
-                        network_input_v_target_output_v[:, 4] -= target_output_v[:, 1]
-                        network_input_v_target_output_v[:, 7] -= target_output_v[:, 1]
-
-                        network_input_v_target_output_v[:, 2] -= target_output_v[:, 2]
-                        network_input_v_target_output_v[:, 5] -= target_output_v[:, 2]
-                        network_input_v_target_output_v[:, 8] -= target_output_v[:, 2]
-
-                        if True:
-                            view_dir = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/shake/view/"+str(step)+"/"
-                            if os.path.exists(view_dir):
-                                os.removedirs(view_dir)
-                            os.makedirs(view_dir)
-                            shape = prediction_v.shape
-                            for test_read_i in range(shape[0]):
-                                figure_hand_back(network_input_v[test_read_i,:], network_input_v_prediction_v[test_read_i,:],
-                                                 network_input_v_target_output_v[test_read_i,:] ,view_dir, test_read_i)
-
-                        if False:
-                            #滤波前
-                            corr_dim_x = target_output_v[:, 0]
-
-                            m = fnn(corr_dim_x, 15)
-                            print('embeding dimension=' + str(m))
-                            tau = Tao(corr_dim_x)
-                            print('time-lag=' + str(tau))
-                            cd = Dim_Corr(corr_dim_x, tau, m, True)
-                            print('correlation dimension=' + str(cd))
-
-                            #滤波后
-                            corr_dim_x2 = target_output_v[:, 0] - prediction_v[:, 0]
-
-                            m = fnn(corr_dim_x2, 15)
-                            print('embeding dimension=' + str(m))
-                            tau = Tao(corr_dim_x2)
-                            print('time-lag=' + str(tau))
-                            cd = Dim_Corr(corr_dim_x2, tau, m, True)
-                            print('correlation dimension=' + str(cd))
-                        if False:
-                            # 滤波前
-                            corr_dim_x = target_output_v[:, 0]
-                            #滤波后
-                            corr_dim_x2 = target_output_v[:, 0] - prediction_v[:, 0]
-                            corr_dim_x_shape = np.shape(corr_dim_x2)
-                            corr_dim_x_t = np.linspace(0, 0.5, corr_dim_x_shape[0])
-
-                            Fourier(corr_dim_x, corr_dim_x_t, False,
-                                    "/home/chen/Documents/tensorflow-wavenet-master/analysis/Fourier/" + str(step)+"before")  # Decompose it, plot it and save it
-                            Fourier(corr_dim_x2, corr_dim_x_t, False,
-                                    "/home/chen/Documents/tensorflow-wavenet-master/analysis/Fourier/" + str(step)+"t_after")  # Decompose it, plot it and save it
+                    loss_value, _ = sess.run([loss, optim])
+                    #writer.add_summary(summary, step)
 
                     """
                     shape = prediction_v.shape

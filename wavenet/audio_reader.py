@@ -1,3 +1,5 @@
+# -*- coding: UTF-8 -*-
+
 import fnmatch
 import os
 import random
@@ -131,22 +133,47 @@ def load_generated_pose(directory, sample_rate):
         #for test_read_i in range(shape[0]):
         #    figure_joint_skeleton(onefile_data_pose_r[test_read_i, :, :], path + "/" + seqid + "/", test_read_i)
         yield onefile_data_pose_r, filename, category_id
-def load_generated_tra(directory, sample_rate):
+def load_generated_tra(directory, sample_rate, cut, cut_file, rand):
     '''Generator that yields audio waveforms from the directory.'''
     files = []
     for root, dirnames, filenames in os.walk(directory):
         for filename in fnmatch.filter(filenames, '*.txt'):
             files.append(os.path.join(root, filename))
+    #
+    if cut:
+        file_out = []
+        with open(cut_file, 'r') as f:
+            for line in f:
+                line = line[1:-1]
+                lines = line.split(',')
+                for file in lines:
+                    file = file.strip()
+                    file = file[1:-1]
+                    file_out.append(file)
+        print("files_gt length: {}".format(len(files)))
+        print("file_out length: {}".format(len(file_out)))
+        files = list(set(files).difference(set(file_out)))
     print("files_gt length: {}".format(len(files)))
-    randomized_files = randomize_files(files)
-    for filename in randomized_files:
-        onefile_randomized_files = np.loadtxt(filename)
-        #shape = onefile_randomized_files.shape
-        #path_view_txt = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra/view/"
-        #for test_read_i in range(shape[0]):
-        #    figure_hand_back(onefile_randomized_files[test_read_i, 0:9], onefile_randomized_files[test_read_i, 9:],
-        #                     path_view_txt, test_read_i)
-        yield onefile_randomized_files, filename, None
+
+    if rand:
+        randomized_files = randomize_files(files)
+        for filename in randomized_files:
+            onefile_randomized_files = np.loadtxt(filename)
+            #shape = onefile_randomized_files.shape
+            #path_view_txt = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra/view/"
+            #for test_read_i in range(shape[0]):
+            #    figure_hand_back(onefile_randomized_files[test_read_i, 0:9], onefile_randomized_files[test_read_i, 9:],
+            #                     path_view_txt, test_read_i)
+            yield onefile_randomized_files, filename, None
+    else:
+        for filename in files:
+            onefile_randomized_files = np.loadtxt(filename)
+            #shape = onefile_randomized_files.shape
+            #path_view_txt = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra/view/"
+            #for test_read_i in range(shape[0]):
+            #    figure_hand_back(onefile_randomized_files[test_read_i, 0:9], onefile_randomized_files[test_read_i, 9:],
+            #                     path_view_txt, test_read_i)
+            yield onefile_randomized_files, filename, None
 def trim_silence(audio, threshold, frame_length=2048):
     '''Removes silence at the beginning and end of a sample.'''
     if audio.size < frame_length:
@@ -206,12 +233,14 @@ class AudioReader(object):
         # TODO Find a better way to check this.
         # Checking inside the AudioReader's thread makes it hard to terminate
         # the execution of the script, so we do it in the constructor for now.
+        """
         files = find_files(audio_dir)
         if not files:
             raise ValueError("No audio files found in '{}'.".format(audio_dir))
         if self.gc_enabled and not_all_have_id(files):
             raise ValueError("Global conditioning is enabled, but file names "
                              "do not conform to pattern having id.")
+        
         # Determine the number of mutually-exclusive categories we will
         # accomodate in our embedding table.
         if self.gc_enabled:
@@ -228,6 +257,8 @@ class AudioReader(object):
                   self.gc_category_cardinality))
         else:
             self.gc_category_cardinality = None
+        """
+        self.gc_category_cardinality = None
 
     def dequeue(self, num_elements):
         output = self.queue.dequeue_many(num_elements)
@@ -243,7 +274,8 @@ class AudioReader(object):
             # chen_test data
             #iterator = load_generated_pose("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/shake", self.sample_rate)
             #iterator = load_generic_audio(self.audio_dir, self.sample_rate)
-            iterator = load_generated_tra("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra", self.sample_rate)
+            iterator = load_generated_tra("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test",
+                                          None, cut = True, cut_file='./rnnnet/file_out_test_name.txt', rand = False)
             for audio, filename, category_id in iterator:
                 if self.coord.should_stop():
                     stop = True
@@ -257,6 +289,12 @@ class AudioReader(object):
                               "silence. Consider decreasing trim_silence "
                               "threshold, or adjust volume of the audio."
                               .format(filename))
+                # use tremor as output
+
+                for tremor_i in range(9):
+                    audio[:, tremor_i + 9] = audio[:, tremor_i] - audio[:, tremor_i+9]
+                # use tremor as output
+
 
                 audio = np.pad(audio, [[self.receptive_field, 0], [0, 0]],
                                'constant')
@@ -279,6 +317,7 @@ class AudioReader(object):
                     if self.gc_enabled:
                         sess.run(self.gc_enqueue,
                                  feed_dict={self.id_placeholder: category_id})
+                #print(filename)
 
     def start_threads(self, sess, n_threads=1):
         for _ in range(n_threads):
