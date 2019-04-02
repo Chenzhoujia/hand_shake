@@ -10,6 +10,10 @@ from mpl_toolkits.mplot3d import Axes3D
 import librosa
 import numpy as np
 import tensorflow as tf
+import pylab as pl
+import scipy.signal as signal
+
+from scipy import fftpack
 
 FILE_PATTERN = r'p([0-9]+)_([0-9]+)\.wav'
 
@@ -137,7 +141,7 @@ def load_generated_tra(directory, sample_rate, cut, cut_file, rand):
     '''Generator that yields audio waveforms from the directory.'''
     files = []
     for root, dirnames, filenames in os.walk(directory):
-        for filename in fnmatch.filter(filenames, '*.txt'):
+        for filename in fnmatch.filter(filenames, '*.npy'):
             files.append(os.path.join(root, filename))
     #
     if cut:
@@ -158,7 +162,7 @@ def load_generated_tra(directory, sample_rate, cut, cut_file, rand):
     if rand:
         randomized_files = randomize_files(files)
         for filename in randomized_files:
-            onefile_randomized_files = np.loadtxt(filename)
+            onefile_randomized_files = np.load(filename)
             #shape = onefile_randomized_files.shape
             #path_view_txt = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra/view/"
             #for test_read_i in range(shape[0]):
@@ -209,7 +213,8 @@ class AudioReader(object):
                  receptive_field,
                  sample_size=None,
                  silence_threshold=None,
-                 queue_size=32):
+                 queue_size=32,
+                 pad=False):
         self.audio_dir = audio_dir
         self.sample_rate = sample_rate
         self.coord = coord
@@ -223,6 +228,7 @@ class AudioReader(object):
                                          ['float32'],
                                          shapes=[(None, 9*2)])
         self.enqueue = self.queue.enqueue([self.sample_placeholder])
+        self.pad = pad
 
         if self.gc_enabled:
             self.id_placeholder = tf.placeholder(dtype=tf.int32, shape=())
@@ -274,8 +280,8 @@ class AudioReader(object):
             # chen_test data
             #iterator = load_generated_pose("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/shake", self.sample_rate)
             #iterator = load_generic_audio(self.audio_dir, self.sample_rate)
-            iterator = load_generated_tra("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test",
-                                          None, cut = True, cut_file='./rnnnet/file_out_test_name.txt', rand = False)
+            iterator = load_generated_tra("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/degree_dataset/1",
+                                          None, cut = False, cut_file='./rnnnet/file_out_test_name.txt', rand = True)
             for audio, filename, category_id in iterator:
                 if self.coord.should_stop():
                     stop = True
@@ -289,15 +295,25 @@ class AudioReader(object):
                               "silence. Consider decreasing trim_silence "
                               "threshold, or adjust volume of the audio."
                               .format(filename))
+                '''
                 # use tremor as output
-
                 for tremor_i in range(9):
                     audio[:, tremor_i + 9] = audio[:, tremor_i] - audio[:, tremor_i+9]
-                # use tremor as output
 
+                # compute Envelope for stage4
+                # for xyz(9)(10)(11) in (12)(13)(14)
+                
+                for Envelope_i in range(3):
+                    x = audio[:,9+Envelope_i]
+                    envelopex = fftpack.hilbert(x)
+                    envelopex = np.sqrt(x ** 2 + envelopex ** 2)
+                    audio[:, 12 + Envelope_i] = envelopex
 
-                audio = np.pad(audio, [[self.receptive_field, 0], [0, 0]],
-                               'constant')
+                    audio[:, 15 + Envelope_i] /=envelopex
+                '''
+                if self.pad:
+                    audio = np.pad(audio, [[self.receptive_field, 0], [0, 0]],
+                                   'constant')
 
                 if self.sample_size:
                     # Cut samples into pieces of size receptive_field +

@@ -1,0 +1,19 @@
+{
+    "batch_size": 1,
+    "data_dir": "",
+    "decay_rate": 0.97,
+    "grad_clip": 5.0,
+    "init_form": "",
+    "input_keep_prob": 1.0,
+    "learning_rate": 0.002,
+    "log_dir": "logs",
+    "model": "lstm",
+    "num_epochs": 50,
+    "num_layers":4,
+    "output_keep_prob": 1.0,
+    "rnn_size": 128,
+    "save_dir": "save",
+    "save_every": 1000,
+    "seq_length": 3000,
+    "vocab_size": 3
+}

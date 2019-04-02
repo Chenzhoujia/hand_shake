@@ -31,7 +31,8 @@ LOGDIR_ROOT = './logdir'
 CHECKPOINT_EVERY = 500
 NUM_STEPS = int(1e5)
 LEARNING_RATE = 1e-3
-WAVENET_PARAMS = './rnnnet_params.json'
+para_id = 2
+WAVENET_PARAMS = './RNN_params/rnnnet_params'+str(para_id)+'.json'
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
 SAMPLE_SIZE = None
 L2_REGULARIZATION_STRENGTH = 0
@@ -232,7 +233,7 @@ def validate_directories(args):
 
     logdir = args.logdir
     if logdir is None:
-        logdir = get_default_logdir(logdir_root)
+        logdir = get_default_logdir(logdir_root)+'_par' + str(para_id)
         print('Using default logdir: {}'.format(logdir))
 
     restore_from = args.restore_from
@@ -350,11 +351,11 @@ def main():
                 loss_value, output_value, label_value = sess.run([model.loss, model.logits, model.original_labels])
                 label_value  = label_value[0,:,:]
 
-                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN/"
+                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN2/"
                            + "loss/" + str(step).zfill(5) + ".txt", np.array([loss_value]))
-                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN/"
+                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN2/"
                            + "result/" + str(step).zfill(5) + ".txt", output_value)
-                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN/"
+                np.savetxt("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra_test_result/RNN2/"
                            + "target/" + str(step).zfill(5) + ".txt", label_value)
 
                 duration = time.time() - start_time

@@ -56,7 +56,8 @@ class WaveNetModel(object):
                  initial_filter_width=32,
                  histograms=False,
                  global_condition_channels=None,
-                 global_condition_cardinality=None):
+                 global_condition_cardinality=None,
+                 namespace = ""):
         '''Initializes the WaveNet model.
 
         Args:
@@ -108,11 +109,13 @@ class WaveNetModel(object):
         self.histograms = histograms
         self.global_condition_channels = global_condition_channels
         self.global_condition_cardinality = global_condition_cardinality
+        self.namespace = namespace
 
         self.receptive_field = WaveNetModel.calculate_receptive_field(
             self.filter_width, self.dilations, self.scalar_input,
             self.initial_filter_width)
         self.variables = self._create_variables()
+
 
     @staticmethod
     def calculate_receptive_field(filter_width, dilations, scalar_input,
@@ -131,7 +134,7 @@ class WaveNetModel(object):
 
         var = dict()
 
-        with tf.variable_scope('wavenet'):
+        with tf.variable_scope('wavenet' + 'stage_id_'+self.namespace):
             if self.global_condition_cardinality is not None:
                 # We only look up the embedding if we are conditioning on a
                 # set of mutually-exclusive categories. We can also condition
@@ -221,14 +224,14 @@ class WaveNetModel(object):
                     [1, self.skip_channels, 128])
                 current['postprocess2'] = create_variable(
                     'postprocess2',
-                    [1, 128, 3])
+                    [1, 128, 64])
                 if self.use_biases:
                     current['postprocess1_bias'] = create_bias_variable(
                         'postprocess1_bias',
                         [128])
                     current['postprocess2_bias'] = create_bias_variable(
                         'postprocess2_bias',
-                        [3])
+                        [64])
                 var['postprocessing'] = current
 
         return var
@@ -696,3 +699,77 @@ class WaveNetModel(object):
 
                     return total_loss
 
+    def pre_loss(self,
+             input_batch,
+             global_condition_batch=None,
+             l2_regularization_strength=None,
+             name='wavenet'):
+        '''Creates a WaveNet network and returns the autoencoding loss.
+
+        The variables are all scoped to the given name.
+        '''
+        with tf.name_scope(name):
+            # We mu-law encode and quantize the input audioform.
+            # chen test encode
+            #encoded_input = mu_law_encode(input_batch,
+            #                              self.quantization_channels)
+
+            gc_embedding = self._embed_gc(global_condition_batch)
+            #encoded = self._one_hot(encoded_input)
+            if self.scalar_input:
+                network_input = tf.reshape(
+                    tf.cast(input_batch, tf.float32),
+                    [self.batch_size, -1, 1])
+            else:
+                #network_input = encoded
+                network_input = input_batch
+            network_input = input_batch[:, :, 0:3]
+            network_label = input_batch[:, :, 9:12]
+
+            # Cut off the last sample of network input to preserve causality.
+            '''
+            network_input_width = tf.shape(network_input)[1] - 1
+            network_input = tf.slice(network_input, [0, 0, 0],
+                                     [-1, network_input_width, -1])
+
+            network_label = tf.slice(network_label, [0, 0, 0],
+                                     [-1, network_input_width, -1])
+            '''
+            network_label = network_label[:, (self.receptive_field-1):, :]
+            raw_output = self._create_network(network_input, gc_embedding)
+
+            #prediction = tf.reshape(raw_output, [-1, 3])
+            #target_output = tf.reshape(network_label, [-1, 3])
+            return raw_output, network_label
+            """
+            with tf.name_scope('loss'):
+
+                #loss = tf.nn.softmax_cross_entropy_with_logits(
+                #    logits=prediction,
+                #    labels=target_output)
+                loss = tf.square(prediction - target_output)
+                reduced_loss = tf.reduce_mean(loss)
+
+                tf.summary.scalar('loss', reduced_loss)
+
+                if l2_regularization_strength is None:
+                    #chen_test
+                    #return network_input, network_label,raw_output
+                    #chen_test end
+
+                    return reduced_loss,network_input,prediction,target_output
+                else:
+                    # L2 regularization for all trainable parameters
+                    l2_loss = tf.add_n([tf.nn.l2_loss(v)
+                                        for v in tf.trainable_variables()
+                                        if not('bias' in v.name)])
+
+                    # Add the regularization term to the loss
+                    total_loss = (reduced_loss +
+                                  l2_regularization_strength * l2_loss)
+
+                    tf.summary.scalar('l2_loss', l2_loss)
+                    tf.summary.scalar('total_loss', total_loss)
+
+                    return total_loss
+            """

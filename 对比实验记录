@@ -1,0 +1,11 @@
+RNN的
+首先调整数据——audio_reader
+
+            iterator = load_generated_tra("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra",
+                                          None, cut = True, cut_file='./rnnnet/file_out_name.txt', rand = True)
+
+            注意保证cut_file与数据集路径的一致性
+
+选择是否加载参数——在脚本参数中控制
+
+RNNtrain.py中——istest = False
