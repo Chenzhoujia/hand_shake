@@ -171,7 +171,7 @@ def load_generated_tra(directory, sample_rate, cut, cut_file, rand):
             yield onefile_randomized_files, filename, None
     else:
         for filename in files:
-            onefile_randomized_files = np.loadtxt(filename)
+            onefile_randomized_files = np.load(filename)
             #shape = onefile_randomized_files.shape
             #path_view_txt = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/shake_tra/view/"
             #for test_read_i in range(shape[0]):
@@ -214,7 +214,9 @@ class AudioReader(object):
                  sample_size=None,
                  silence_threshold=None,
                  queue_size=32,
-                 pad=False):
+                 pad=False,
+                 path = "/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/degree_dataset/2",
+                 rand = True):
         self.audio_dir = audio_dir
         self.sample_rate = sample_rate
         self.coord = coord
@@ -224,11 +226,18 @@ class AudioReader(object):
         self.gc_enabled = gc_enabled
         self.threads = []
         self.sample_placeholder = tf.placeholder(dtype=tf.float32, shape=None)
+        self.filename_placeholder = tf.placeholder(dtype=tf.string, shape=None)
         self.queue = tf.PaddingFIFOQueue(queue_size,
                                          ['float32'],
                                          shapes=[(None, 9*2)])
+        self.str_queue = tf.PaddingFIFOQueue(queue_size,
+                                         ['string'],
+                                         shapes=[()])
         self.enqueue = self.queue.enqueue([self.sample_placeholder])
+        self.enqueue_str = self.str_queue.enqueue([self.filename_placeholder])
         self.pad = pad
+        self.path = path
+        self.rand = rand
 
         if self.gc_enabled:
             self.id_placeholder = tf.placeholder(dtype=tf.int32, shape=())
@@ -273,6 +282,9 @@ class AudioReader(object):
     def dequeue_gc(self, num_elements):
         return self.gc_queue.dequeue_many(num_elements)
 
+    def dequeue_str(self, num_elements):
+        return self.str_queue.dequeue_many(num_elements)
+
     def thread_main(self, sess):
         stop = False
         # Go through the dataset multiple times
@@ -280,8 +292,8 @@ class AudioReader(object):
             # chen_test data
             #iterator = load_generated_pose("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/shake", self.sample_rate)
             #iterator = load_generic_audio(self.audio_dir, self.sample_rate)
-            iterator = load_generated_tra("/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/degree_dataset/1",
-                                          None, cut = False, cut_file='./rnnnet/file_out_test_name.txt', rand = True)
+            iterator = load_generated_tra(self.path,
+                                          None, cut = False, cut_file='./rnnnet/file_out_test_name.txt', rand = self.rand)
             for audio, filename, category_id in iterator:
                 if self.coord.should_stop():
                     stop = True
@@ -295,11 +307,11 @@ class AudioReader(object):
                               "silence. Consider decreasing trim_silence "
                               "threshold, or adjust volume of the audio."
                               .format(filename))
-                '''
+
                 # use tremor as output
                 for tremor_i in range(9):
                     audio[:, tremor_i + 9] = audio[:, tremor_i] - audio[:, tremor_i+9]
-
+                '''
                 # compute Envelope for stage4
                 # for xyz(9)(10)(11) in (12)(13)(14)
                 
@@ -323,6 +335,8 @@ class AudioReader(object):
                                         self.sample_size), :]
                         sess.run(self.enqueue,
                                  feed_dict={self.sample_placeholder: piece})
+                        sess.run(self.enqueue_str,
+                                 feed_dict={self.filename_placeholder: filename})
                         audio = audio[self.sample_size:, :]
                         if self.gc_enabled:
                             sess.run(self.gc_enqueue, feed_dict={
@@ -330,6 +344,8 @@ class AudioReader(object):
                 else:
                     sess.run(self.enqueue,
                              feed_dict={self.sample_placeholder: audio})
+                    sess.run(self.enqueue_str,
+                             feed_dict={self.filename_placeholder: filename})
                     if self.gc_enabled:
                         sess.run(self.gc_enqueue,
                                  feed_dict={self.id_placeholder: category_id})

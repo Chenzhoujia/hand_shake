@@ -31,7 +31,7 @@ DATA_DIRECTORY = './VCTK-Corpus'
 LOGDIR_ROOT = './logdir'
 CHECKPOINT_EVERY = 500
 NUM_STEPS = int(1e5)
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 WAVENET_PARAMS = ['./WAVE_params/wavenet_params_1.json','./WAVE_params/wavenet_params_2.json','./WAVE_params/wavenet_params_3.json']
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
 SAMPLE_SIZE = None
@@ -274,29 +274,6 @@ def main():
     # Create coordinator.
     coord = tf.train.Coordinator()
 
-    #test input
-    """
-    silence_threshold = args.silence_threshold if args.silence_threshold > \
-                                                  EPSILON else None
-    gc_enabled = args.gc_channels is not None
-    reader = AudioReader(
-        args.data_dir,
-        coord,
-        sample_rate=wavenet_params[2]['sample_rate'],
-        gc_enabled=gc_enabled,
-        receptive_field=WaveNetModel.calculate_receptive_field(wavenet_params[2]["filter_width"],
-                                                               wavenet_params[2]["dilations"],
-                                                               wavenet_params[2]["scalar_input"],
-                                                               wavenet_params[2]["initial_filter_width"]),
-        sample_size=args.sample_size,
-        silence_threshold=silence_threshold,
-        pad=False)
-    config = tf.ConfigProto(log_device_placement=False)
-    config.gpu_options.allow_growth = True
-    sess = tf.Session(config=config)
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-    reader.start_threads(sess)
-    """
 
     # Load raw waveform from VCTK corpus.
     with tf.name_scope('create_inputs'):
@@ -316,8 +293,10 @@ def main():
                                                                     wavenet_params[2]["initial_filter_width"]),
             sample_size=args.sample_size,
             silence_threshold=silence_threshold,
-            pad = False)
+            pad = False,
+            path="/media/chen/4CBEA7F1BEA7D1AE/Download/hand_dataset/pakinson/degree_dataset/2")
         audio_batch = reader.dequeue(args.batch_size)
+        audio_batch_str = reader.dequeue_str(args.batch_size)
         audio_batch = tf.squeeze(audio_batch)
 
         one_receptive_field = WaveNetModel.calculate_receptive_field(wavenet_params[2]["filter_width"],
@@ -525,22 +504,28 @@ def main():
                 _, _,loss_value0,loss_value1,\
                 audio_batch_list_ori_v, audio_batch_list_now_v,\
                 raw_output_list_ori_v, raw_output_list_now_v,\
-                loss_all_list_ori_v, loss_all_list_now_v = \
+                loss_all_list_ori_v, loss_all_list_now_v, \
+                audio_batch_str_= \
                     sess.run([optim_list[muti_step_id-1], optim_list[muti_step_id], loss_list[muti_step_id-1], loss_list[muti_step_id],        #basic info
                               audio_batch_list[muti_step_id-1],audio_batch_list[muti_step_id],  #label input
                               raw_output_list[muti_step_id-1], raw_output_list[muti_step_id],   # output                         # output
-                              loss_all_list[muti_step_id-1], loss_all_list[muti_step_id]]) #loss
+                              loss_all_list[muti_step_id-1], loss_all_list[muti_step_id],audio_batch_str]) #loss
 
                 audio_batch_list_ori_v = audio_batch_list_ori_v[0, one_receptive_field:, :]
                 audio_batch_list_now_v = audio_batch_list_now_v[0, one_receptive_field:, :]
                 #writer.add_summary(summary, step)
 
+                #统计补偿的震颤的比例，每次计算一个样本之后，计算一次震颤补偿比例，根据audio_batch_str_中的幅度信息，存入相应txt文件中，以aw的方式写
+
 
                 if step%100==0:
-                    wave_result0 = raw_output_list_ori_v[one_receptive_field:, :]
-                    wave_result1 = raw_output_list_now_v[one_receptive_field:, :] + wave_result0
-                    wave_target = audio_batch_list_ori_v[:,9:12][one_receptive_field:, :]
-                    wave_input = audio_batch_list_ori_v[:, 0:3][one_receptive_field:, :]
+                    wave_result0 = raw_output_list_ori_v[(one_receptive_field+1):, :]   #t'
+                    wave_result1 = raw_output_list_now_v[(one_receptive_field+1):, :] + wave_result0 #t'+(t-t')'
+                    wave_target = audio_batch_list_ori_v[:,9:12][one_receptive_field:, :]   #t
+                    wave_input = audio_batch_list_ori_v[:, 0:3][one_receptive_field:, :]    #t+v
+                    wave_result0 = wave_input - wave_result0
+                    wave_result1 = wave_input - wave_result1
+                    wave_target = wave_input - wave_target
                     # 绘制3D图
                     fig = plt.figure(1)
                     fig.clear()
